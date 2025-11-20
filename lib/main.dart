@@ -290,8 +290,11 @@ class BoardsPage extends StatelessWidget {
             title: Text(b.name),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Open "${b.name}"')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChatPage(boardName: b.name),
+                ),
               );
             },
           );
@@ -471,6 +474,153 @@ class _SettingsPageState extends State<SettingsPage> {
             leading: const Icon(Icons.logout),
             title: const Text('Log out'),
             onTap: _logout,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+// Chat Page
+class ChatPage extends StatefulWidget {
+  final String boardName;
+  const ChatPage({super.key, required this.boardName});
+
+  @override
+  State<ChatPage> createState() => _ChatPageState();
+}
+
+class _ChatPageState extends State<ChatPage> {
+  final _text = TextEditingController();
+  String? _displayName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDisplayName();
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDisplayName() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    String name = user.email ?? 'User';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (doc.exists) {
+        final data = doc.data() ?? {};
+        final first = (data['firstName'] ?? '').toString().trim();
+        final last  = (data['lastName']  ?? '').toString().trim();
+        final combined = '$first $last'.trim();
+        if (combined.isNotEmpty) name = combined;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _displayName = name);
+  }
+
+  Future<void> _send() async {
+    final txt = _text.text.trim();
+    if (txt.isEmpty) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    final uid  = user?.uid ?? 'anon';
+    final name = _displayName ?? user?.email ?? 'User';
+
+    await FirebaseFirestore.instance
+        .collection('boards')
+        .doc(widget.boardName)
+        .collection('messages')
+        .add({
+      'text': txt,
+      'displayName': name,
+      'uid': uid,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    _text.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final msgsRef = FirebaseFirestore.instance
+        .collection('boards')
+        .doc(widget.boardName)
+        .collection('messages')
+        .orderBy('createdAt', descending: false);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.boardName)),
+      body: Column(
+        children: [
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: msgsRef.snapshots(), // real time updates
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final docs = snap.data?.docs ?? [];
+                if (docs.isEmpty) {
+                  return const Center(child: Text('No messages yet.'));
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                  itemCount: docs.length,
+                  itemBuilder: (_, i) {
+                    final m = docs[i].data() as Map<String, dynamic>? ?? {};
+                    final text = (m['text'] ?? '').toString();
+                    final name = (m['displayName'] ?? 'User').toString();
+                    final ts   = m['createdAt'];
+                    final dt   = (ts is Timestamp)
+                        ? ts.toDate().toLocal()
+                        : null;
+                    final when = dt != null
+                        ? dt.toString().split('.').first
+                        : '';
+
+                    // Datetime, message, username
+                    return ListTile(
+                      dense: true,
+                      title: Text(name),
+                      subtitle: Text(text),
+                      trailing: Text(when, style: const TextStyle(fontSize: 12)),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+
+          // input row
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _text,
+                    decoration: const InputDecoration(
+                      hintText: 'Type a message',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _send,
+                  child: const Text('Send'),
+                ),
+              ],
+            ),
           ),
         ],
       ),
