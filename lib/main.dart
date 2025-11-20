@@ -208,3 +208,64 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 }
+
+// Boards
+class BoardsPage extends StatelessWidget {
+  const BoardsPage({super.key});
+
+  // Hard-coded list of boards
+  List<_Board> _boards() {
+    final items = <_Board>[
+      _Board('Games', Icons.sports_esports),
+      _Board('Business', Icons.business_center),
+      _Board('Public Health', Icons.health_and_safety),
+      _Board('Study', Icons.school),
+    ];
+    items.sort((a, b) => a.name.compareTo(b.name)); // ordered list
+    return items;
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    await FirebaseAuth.instance.signOut();
+    if (context.mounted) {
+      Navigator.pushReplacementNamed(context, '/login');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final boards = _boards();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Message Boards'),
+        actions: [
+          IconButton(onPressed: () => _logout(context), icon: const Icon(Icons.logout)),
+        ],
+      ),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(8),
+        itemCount: boards.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, i) {
+          final b = boards[i];
+          return ListTile(
+            leading: CircleAvatar(child: Icon(b.icon)),
+            title: Text(b.name),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Open "${b.name}"')),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Board {
+  final String name;
+  final IconData icon;
+  _Board(this.name, this.icon);
+}
