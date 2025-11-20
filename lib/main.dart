@@ -24,6 +24,8 @@ class MyApp extends StatelessWidget {
         '/login': (_) => const LoginPage(),
         '/register': (_) => const RegisterPage(),
         '/boards': (_) => const BoardsPage(),
+        '/profile': (_) => const ProfilePage(),
+        '/settings': (_) => const SettingsPage(),
       },
     );
   }
@@ -242,6 +244,41 @@ class BoardsPage extends StatelessWidget {
           IconButton(onPressed: () => _logout(context), icon: const Icon(Icons.logout)),
         ],
       ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Colors.teal),
+              child: Text('Menu', style: TextStyle(color: Colors.white, fontSize: 20)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.forum),
+              title: const Text('Message Boards'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushReplacementNamed(context, '/boards');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('Profile'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/profile');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/settings');
+              },
+            ),
+          ],
+        ),
+      ),
       body: ListView.separated(
         padding: const EdgeInsets.all(8),
         itemCount: boards.length,
@@ -268,4 +305,175 @@ class _Board {
   final String name;
   final IconData icon;
   _Board(this.name, this.icon);
+}
+
+// Profile Page
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key});
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  final first = TextEditingController();
+  final last = TextEditingController();
+
+  @override
+  void dispose() { first.dispose(); last.dispose(); super.dispose(); }
+
+  Future<void> _save() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      'firstName': first.text.trim(),
+      'lastName': last.text.trim(),
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Profile')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: first, decoration: const InputDecoration(labelText: 'First name')),
+          const SizedBox(height: 12),
+          TextField(controller: last, decoration: const InputDecoration(labelText: 'Last name')),
+          const SizedBox(height: 20),
+          ElevatedButton(onPressed: _save, child: const Text('Save')),
+        ]),
+      ),
+    );
+  }
+}
+
+// Setting Page
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  final dob = TextEditingController();
+
+  @override
+  void dispose() { dob.dispose(); super.dispose(); }
+
+  Future<void> _updateDob() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      'dob': dob.text.trim(),
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('DOB updated')));
+  }
+
+  Future<void> _changeEmail() async {
+    final controller = TextEditingController();
+    final newEmail = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Change Email'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'New email'),
+          keyboardType: TextInputType.emailAddress,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('OK')),
+        ],
+      ),
+    );
+    if (newEmail == null || newEmail.isEmpty) return;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await user.verifyBeforeUpdateEmail(newEmail);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verification sent. Check your email.')),
+      );
+    } on FirebaseAuthException catch (e) {
+      final msg = (e.code == 'requires-recent-login')
+          ? 'Please re-login and try again.'
+          : (e.message ?? 'Could not change email.');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final controller = TextEditingController();
+    final newPass = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Change Password'),
+        content: TextField(controller: controller, decoration: const InputDecoration(labelText: 'New password'), obscureText: true),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('OK')),
+        ],
+      ),
+    );
+    if (newPass == null || newPass.isEmpty) return;
+    await FirebaseAuth.instance.currentUser?.updatePassword(newPass);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password updated')));
+  }
+
+  Future<void> _logout() async {
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(8),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.email),
+            title: const Text('Change Email'),
+            onTap: _changeEmail,
+          ),
+          ListTile(
+            leading: const Icon(Icons.password),
+            title: const Text('Change Password'),
+            onTap: _changePassword,
+          ),
+          const Divider(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(controller: dob, decoration: const InputDecoration(labelText: 'DOB (YYYY-MM-DD)')),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(onPressed: _updateDob, child: const Text('Save')),
+              ],
+            ),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Log out'),
+            onTap: _logout,
+          ),
+        ],
+      ),
+    );
+  }
 }
